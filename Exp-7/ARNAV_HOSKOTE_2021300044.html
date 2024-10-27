@@ -1,0 +1,132 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Loan Data Visualizations</title>
+    <script src="https://d3js.org/d3.v6.min.js"></script>
+    <style>
+        .chart {
+            display: inline-block;
+            margin: 20px;
+        }
+        svg {
+            border: 1px solid #ddd;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Loan Data Visualizations</h1>
+
+    <!-- Bar Chart: Loan Approvals by Status -->
+    <div class="chart" id="bar-chart">
+        <h2>Loan Approval Status Bar Chart</h2>
+        <svg width="500" height="300"></svg>
+    </div>
+
+    <!-- Pie Chart: Loan Amount Distribution by Approval Status -->
+    <div class="chart" id="pie-chart">
+        <h2>Loan Amount Distribution Pie Chart</h2>
+        <svg width="500" height="300"></svg>
+    </div>
+
+    <!-- Histogram: Loan Amount Distribution -->
+    <div class="chart" id="histogram">
+        <h2>Loan Amount Histogram</h2>
+        <svg width="600" height="400"></svg>
+    </div>
+
+    <!-- Timeline Chart: Loan Approvals Over Time -->
+    <div class="chart" id="timeline-chart">
+        <h2>Loan Approval Timeline Chart</h2>
+        <svg width="600" height="400"></svg>
+    </div>
+
+    <!-- Scatter Plot: Income vs. Loan Amount -->
+    <div class="chart" id="scatter-plot">
+        <h2>Income vs Loan Amount Scatter Plot</h2>
+        <svg width="600" height="400"></svg>
+    </div>
+
+    <script>
+        d3.csv("loan_data.csv").then(data => {
+            // 1. Bar Chart: Loan Approval Status
+            const statusCount = d3.rollups(data, v => v.length, d => d["Approval Status"]);
+            const barSvg = d3.select("#bar-chart svg");
+            const barMargin = 40, barWidth = barSvg.attr("width") - barMargin * 2, barHeight = barSvg.attr("height") - barMargin * 2;
+
+            const xBar = d3.scaleBand().domain(statusCount.map(d => d[0])).range([0, barWidth]).padding(0.4);
+            const yBar = d3.scaleLinear().domain([0, d3.max(statusCount, d => d[1])]).range([barHeight, 0]);
+
+            const barG = barSvg.append("g").attr("transform", `translate(${barMargin},${barMargin})`);
+            barG.selectAll("rect").data(statusCount).enter().append("rect")
+                .attr("x", d => xBar(d[0])).attr("y", d => yBar(d[1]))
+                .attr("width", xBar.bandwidth()).attr("height", d => barHeight - yBar(d[1]))
+                .attr("fill", "steelblue");
+
+            barG.append("g").call(d3.axisLeft(yBar));
+            barG.append("g").attr("transform", `translate(0,${barHeight})`).call(d3.axisBottom(xBar));
+
+            // 2. Pie Chart: Loan Amount Distribution by Status
+            const totalByStatus = d3.rollups(data, v => d3.sum(v, d => +d["Loan Amount"]), d => d["Approval Status"]);
+            const pieSvg = d3.select("#pie-chart svg"), pieRadius = Math.min(pieSvg.attr("width"), pieSvg.attr("height")) / 2;
+            const pieG = pieSvg.append("g").attr("transform", `translate(${pieSvg.attr("width") / 2}, ${pieSvg.attr("height") / 2})`);
+            const colorPie = d3.scaleOrdinal(["#4caf50", "#f44336"]);
+
+            const pie = d3.pie().value(d => d[1]);
+            const arc = d3.arc().outerRadius(pieRadius - 10).innerRadius(0);
+
+            const arcs = pieG.selectAll(".arc").data(pie(totalByStatus)).enter().append("g").attr("class", "arc");
+            arcs.append("path").attr("d", arc).attr("fill", d => colorPie(d.data[0]));
+
+            // 3. Histogram: Loan Amount Distribution
+            const loanAmounts = data.map(d => +d["Loan Amount"]);
+            const histSvg = d3.select("#histogram svg"), histMargin = 50, histWidth = histSvg.attr("width") - histMargin * 2, histHeight = histSvg.attr("height") - histMargin * 2;
+
+            const xHist = d3.scaleLinear().domain([0, d3.max(loanAmounts)]).range([0, histWidth]);
+            const histogram = d3.histogram().domain(xHist.domain()).thresholds(xHist.ticks(10));
+            const bins = histogram(loanAmounts);
+            const yHist = d3.scaleLinear().domain([0, d3.max(bins, d => d.length)]).range([histHeight, 0]);
+
+            const histG = histSvg.append("g").attr("transform", `translate(${histMargin},${histMargin})`);
+            histG.selectAll("rect").data(bins).enter().append("rect")
+                .attr("x", d => xHist(d.x0)).attr("y", d => yHist(d.length))
+                .attr("width", d => xHist(d.x1) - xHist(d.x0) - 1).attr("height", d => histHeight - yHist(d.length))
+                .attr("fill", "steelblue");
+
+            histG.append("g").call(d3.axisLeft(yHist));
+            histG.append("g").attr("transform", `translate(0,${histHeight})`).call(d3.axisBottom(xHist));
+
+            // 4. Timeline Chart: Loan Approvals Over Time
+            const filteredData = data.filter(d => d["Approval Status"] === "Approved");
+            const countsByDate = d3.rollups(filteredData, v => v.length, d => d["Approval Date"]);
+            const timelineSvg = d3.select("#timeline-chart svg"), timeMargin = 50, timeWidth = timelineSvg.attr("width") - timeMargin * 2, timeHeight = timelineSvg.attr("height") - timeMargin * 2;
+
+            const xTime = d3.scaleTime().domain(d3.extent(countsByDate, d => new Date(d[0]))).range([0, timeWidth]);
+            const yTime = d3.scaleLinear().domain([0, d3.max(countsByDate, d => d[1])]).range([timeHeight, 0]);
+
+            const line = d3.line().x(d => xTime(new Date(d[0]))).y(d => yTime(d[1]));
+            const timeG = timelineSvg.append("g").attr("transform", `translate(${timeMargin},${timeMargin})`);
+            timeG.append("path").datum(countsByDate).attr("fill", "none").attr("stroke", "steelblue").attr("stroke-width", 1.5).attr("d", line);
+
+            timeG.append("g").call(d3.axisLeft(yTime));
+            timeG.append("g").attr("transform", `translate(0,${timeHeight})`).call(d3.axisBottom(xTime));
+
+            // 5. Scatter Plot: Income vs. Loan Amount
+            const scatterSvg = d3.select("#scatter-plot svg"), scatterMargin = 50, scatterWidth = scatterSvg.attr("width") - scatterMargin * 2, scatterHeight = scatterSvg.attr("height") - scatterMargin * 2;
+
+            const xScatter = d3.scaleLinear().domain([0, d3.max(data, d => +d["Income"])]).range([0, scatterWidth]);
+            const yScatter = d3.scaleLinear().domain([0, d3.max(data, d => +d["Loan Amount"])]).range([scatterHeight, 0]);
+
+            const scatterG = scatterSvg.append("g").attr("transform", `translate(${scatterMargin},${scatterMargin})`);
+            scatterG.selectAll("circle").data(data).enter().append("circle")
+                .attr("cx", d => xScatter(d["Income"])).attr("cy", d => yScatter(d["Loan Amount"]))
+                .attr("r", 5).attr("fill", "steelblue");
+
+            scatterG.append("g").call(d3.axisLeft(yScatter));
+            scatterG.append("g").attr("transform", `translate(0,${scatterHeight})`).call(d3.axisBottom(xScatter));
+        });
+    </script>
+</body>
+</html>
